@@ -91,4 +91,4 @@ See the [HMD User Agreement](https://www.mortality.org/Data/UserAgreement).
 
 ## Author
 
-Beverley Ogenche
+Martin Sato
