@@ -1,0 +1,342 @@
+---
+title: "Belgium's Births, 1840–2024: A Data Story"
+author: "Beverley Ogenche"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: false
+    code_folding: hide
+    theme: flatly
+    df_print: kable
+bibliography: references.bib
+link-citations: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE,
+  fig.width = 9, fig.height = 5, dpi = 150, fig.align = "center"
+)
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(scales)
+})
+
+# Works whether you knit from the project root (render.R) or from analysis/
+root <- if (file.exists("data/raw/bel_birth.csv")) "." else ".."
+source(file.path(root, "R", "functions.R"))
+
+raw    <- load_births(file.path(root, "data", "raw", "bel_birth.csv"))
+births <- clean_births(raw)
+tot    <- national_totals(births)
+
+# Key values used in the text
+yr  <- function(y) tot %>% filter(Year == y)
+b   <- function(y) yr(y)$births
+last_year   <- max(tot$Year)
+last_births <- b(last_year)
+lower_years <- tot %>% filter(births < last_births) %>% pull(Year)
+peak        <- tot %>% slice_max(births, n = 1)
+since_2008  <- tot %>% filter(Year >= 2009)
+n_down      <- sum(since_2008$pct_change < 0)
+
+# Chart style
+accent <- "#2b6cb0"
+grey   <- "grey65"
+theme_story <- theme_minimal(base_size = 12) +
+  theme(
+    plot.title         = element_text(face = "bold"),
+    plot.title.position = "plot",
+    plot.caption       = element_text(colour = "grey40", hjust = 0),
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+theme_set(theme_story)
+hmd_caption <- "Source: Human Mortality Database, Belgium births input data (LDB = 1 rows)."
+
+war_bands <- tibble(
+  start = c(1914, 1940), end = c(1918, 1945), label = c("WWI", "WWII")
+)
+add_war_bands <- function(ymin = -Inf, ymax = Inf) {
+  list(
+    geom_rect(data = war_bands, inherit.aes = FALSE,
+              aes(xmin = start, xmax = end, ymin = ymin, ymax = ymax),
+              fill = "grey90"),
+    geom_text(data = war_bands, inherit.aes = FALSE,
+              aes(x = (start + end) / 2, y = -Inf, label = label),
+              vjust = -0.8, size = 3.2, colour = "grey45")
+  )
+}
+```
+
+# Introduction
+
+In `r last_year`, Belgium recorded **`r fmt(last_births)`** live births. Over the last
+`r last_year - min(tot$Year) + 1` years, only `r length(lower_years)` years had fewer
+(`r paste(lower_years, collapse = ", ")`), all during a world war.
+
+This story asks one question: **how did a country that once had about
+`r fmt(round(peak$births, -3))` births a year reach a peacetime low?** The answer
+comes in five chapters: growth, war, boom, bust and a new decline.
+
+The data are official annual live births in Belgium by sex, taken from the
+Human Mortality Database [@hmd].
+
+# The data
+
+```{r data-dictionary}
+tibble(
+  Variable = c("PopName", "Area", "Sex", "Year", "YearReg", "RefCode", "Access",
+               "Births", "NoteCode1-3", "LDB"),
+  Meaning = c(
+    "Population code (always BEL)",
+    "Territory or sub-series the count covers",
+    "f = female, m = male",
+    "Year of birth",
+    "Year of registration",
+    "Code for the original data source",
+    "Access level (O = open)",
+    "Number of live births",
+    "HMD footnote codes",
+    "1 = row used in the final HMD series, 0 = not used"
+  )
+)
+```
+
+The raw file has `r nrow(raw)` rows. Some years appear more than once because
+HMD keeps several areas and sources side by side. Keeping only the rows with
+`LDB = 1` leaves **one row per year and sex** for `r min(tot$Year)`–`r max(tot$Year)`,
+which is the series used below. The method behind these choices is described
+in the HMD Methods Protocol [@hmd_methods].
+
+# The story at a glance
+
+```{r fig-overview, fig.height = 5.5}
+labels <- tot %>%
+  filter(Year %in% c(1901, 1918, 1941, 1964, 2008, last_year)) %>%
+  mutate(
+    name  = c("1901 peak", "WWI low", "WWII low", "Baby-boom peak",
+              "2008 high", paste(last_year, "low")),
+    label = paste0(name, "\n", Year, ": ", fmt(births)),
+    vjust = ifelse(name %in% c("WWI low", "WWII low", paste(last_year, "low")), 1.4, -0.4),
+    hjust = ifelse(Year == last_year, 0.85, 0.5)
+  )
+
+ggplot(tot, aes(Year, births)) +
+  add_war_bands() +
+  geom_hline(yintercept = last_births, linetype = "dashed", colour = "grey50") +
+  annotate("text", x = 1858, y = last_births, label = paste(last_year, "level"),
+           vjust = 1.4, size = 3.3, colour = "grey40") +
+  geom_line(colour = grey, linewidth = 0.8) +
+  geom_line(data = filter(tot, Year >= 2008), colour = accent, linewidth = 1.3) +
+  geom_point(data = labels, colour = accent, size = 2.4) +
+  geom_text(data = labels, aes(label = label, vjust = vjust, hjust = hjust),
+            size = 3.2, lineheight = 0.9) +
+  scale_y_continuous(labels = label_comma(), limits = c(0, 230000),
+                     expand = expansion(mult = c(0, 0.02))) +
+  scale_x_continuous(breaks = seq(1840, 2020, 20)) +
+  labs(
+    title = paste("Births in", last_year, "fell to their lowest peacetime level since 1840"),
+    subtitle = "Live births per year, Belgium, both sexes. Blue: the decline since 2008.",
+    x = NULL, y = NULL, caption = hmd_caption
+  )
+```
+
+# Insight 1: A century of growth, peaking in 1901
+
+Births rose `r round((b(1901) / b(1840) - 1) * 100)`% between 1840 and 1901,
+from `r fmt(b(1840))` to an all-time high of **`r fmt(b(1901))`**. Births grew
+because the population did: more women of childbearing age meant more babies,
+even if each family's size stayed the same.
+
+The one clear break is **1846–47**, when births fell about
+`r round((1 - b(1847) / b(1845)) * 100)`% in two years. This coincides with
+the potato blight and famine that hit Flanders hard.
+
+**So what:** after 1901, births started falling *before* any war began
+(down `r round((1 - b(1913) / b(1901)) * 100)`% by 1913). This is the first sign of
+the fertility transition, when families began choosing to have fewer children.
+
+# Insight 2: War cuts births in half, then they bounce back
+
+During **World War I**, births fell `r round((1 - b(1918) / b(1913)) * 100)`%,
+from `r fmt(b(1913))` in 1913 to `r fmt(b(1918))` in 1918. In **World War II**
+the drop was smaller but still sharp: births fell
+`r round((1 - b(1941) / b(1938)) * 100)`% from 1938 to 1941. After both wars, births rebounded within one or two years.
+
+The chart below shows the change from one year to the next. Most years move by
+only a few percent, so the war years stand out clearly.
+
+```{r fig-change}
+ggplot(filter(tot, !is.na(pct_change)), aes(Year, pct_change, fill = pct_change > 0)) +
+  geom_col(width = 0.8) +
+  geom_hline(yintercept = 0, colour = "grey30") +
+  scale_fill_manual(values = c(`TRUE` = grey, `FALSE` = "firebrick"), guide = "none") +
+  scale_x_continuous(breaks = seq(1840, 2020, 20)) +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  labs(
+    title = "War years bring the sharpest falls and the strongest rebounds",
+    subtitle = "Change in total births from the previous year. Red: decreases.",
+    x = NULL, y = NULL, caption = hmd_caption
+  )
+```
+
+**So what:** shocks like war mostly *delay* births rather than cancel them.
+When the shock ends, many of the postponed births happen quickly.
+
+# Insight 3: The baby boom, then the bust
+
+Births climbed after 1945 and peaked at **`r fmt(b(1964))` in 1964**. Then came
+the bust: a `r round((1 - b(1985) / b(1964)) * 100)`% fall in 21 years, to
+`r fmt(b(1985))` in 1985. This drop lines up with the arrival of the
+contraceptive pill, more women in education and paid work, and later
+parenthood.
+
+**So what:** unlike the wars, this fall did not bounce back. It was a lasting
+change in how many children people chose to have.
+
+# Insight 4: Since 2008, a slow slide to a new low
+
+After a small rise to **`r fmt(b(2008))` in 2008**, births fell in
+`r n_down` of the `r nrow(since_2008)` years that followed, down
+`r round((1 - last_births / b(2008)) * 100)`% to **`r fmt(last_births)` in
+`r last_year`**.
+
+```{r fig-recent, fig.height = 4.5}
+recent <- filter(tot, Year >= 1946)
+ggplot(recent, aes(Year, births)) +
+  geom_line(colour = grey, linewidth = 0.8) +
+  geom_line(data = filter(recent, Year >= 2008), colour = accent, linewidth = 1.3) +
+  geom_point(data = filter(recent, Year %in% c(1964, 1985, 2008, last_year)),
+             colour = accent, size = 2.4) +
+  geom_text(data = filter(recent, Year %in% c(1964, 1985, 2008, last_year)),
+            aes(label = paste0(Year, "\n", fmt(births))),
+            vjust = c(-0.4, 1.4, -0.4, 1.4), size = 3.2, lineheight = 0.9) +
+  scale_y_continuous(labels = label_comma(), limits = c(90000, 175000)) +
+  labs(
+    title = "The boom peaked in 1964; the current decline began in 2008",
+    subtitle = "Live births per year, Belgium, 1946 onwards",
+    x = NULL, y = NULL, caption = hmd_caption
+  )
+```
+
+**So what:** this is the first long decline without a war or crisis to
+explain it, and there is no sign of a rebound yet.
+
+# Insight 5: The boy–girl balance barely moves
+
+Across the whole series, the average sex ratio at birth is
+**`r round(mean(tot$sex_ratio), 1)` boys per 100 girls**, close to the normal
+biological ratio of about 105. That steadiness is a good sign the records are
+reliable.
+
+```{r fig-sex-ratio, fig.height = 4.5}
+ggplot(tot, aes(Year, sex_ratio)) +
+  add_war_bands() +
+  geom_hline(yintercept = 105, linetype = "dashed", colour = "grey50") +
+  geom_line(colour = accent, linewidth = 0.7) +
+  scale_x_continuous(breaks = seq(1840, 2020, 20)) +
+  labs(
+    title = "About 105 boys are born for every 100 girls, with a rise in WWII",
+    subtitle = "Sex ratio at birth (male births per 100 female births). Dashed line: 105.",
+    x = NULL, y = NULL, caption = hmd_caption
+  )
+```
+
+The box plot shows the same data grouped by period. The WWII years sit
+clearly higher, a pattern other countries' wartime data also show and
+sometimes called the "returning soldier effect".
+
+```{r fig-sex-ratio-box, fig.height = 4.5}
+ggplot(tot, aes(period, sex_ratio)) +
+  geom_boxplot(fill = "grey92", colour = "grey40", outlier.colour = "firebrick") +
+  geom_hline(yintercept = 105, linetype = "dashed", colour = "grey50") +
+  labs(
+    title = "The sex ratio was highest during the Second World War",
+    subtitle = "Sex ratio at birth by period",
+    x = NULL, y = "Boys per 100 girls", caption = hmd_caption
+  )
+```
+
+```{r sex-ratio-table}
+tot %>%
+  group_by(Period = period) %>%
+  summarise(
+    Years = n(),
+    `Mean sex ratio` = round(mean(sex_ratio), 2),
+    `Mean births per year` = fmt(mean(births))
+  )
+```
+
+**So what:** the total number of births changed a lot, but the mix of boys
+and girls did not. The story is about how many children are born, not which
+sex.
+
+# Conclusion
+
+Belgium's birth record shows two kinds of decline. **Shocks** like famine and
+war cause deep but short drops, and births recover once the crisis ends.
+**Structural change**, like the post-1964 bust and the fall since 2008, brings
+slower declines that do not recover.
+
+The current decline belongs to the second kind. In `r last_year`, Belgium had
+fewer births than in any peacetime year on record, and the trend is still
+pointing down.
+
+> **Takeaway:** Belgium's births are falling with no war to blame, which
+> suggests a lasting change in family choices rather than a temporary dip.
+
+# Data notes and limits
+
+```{r data-checks}
+area130 <- raw %>%
+  filter(Area == 130) %>%
+  group_by(Year) %>%
+  summarise(ratio = sum(Births[Sex == "m"]) / sum(Births[Sex == "f"]) * 100)
+
+overlap_2010 <- raw %>%
+  filter(Year == 2010) %>%
+  group_by(Area, LDB) %>%
+  summarise(births = sum(Births), .groups = "drop")
+```
+
+- **Counts, not rates.** Fewer births can mean smaller families or just fewer
+  women of childbearing age. This data cannot tell the two apart on its own.
+- **Series break in 2010.** Two sources overlap in 2010. The newer one
+  (Area 30) reports `r fmt(diff(overlap_2010$births))` more births than the
+  older one (Area 20).
+- **Area 130 is excluded.** It is a small sub-series with a sex ratio between
+  `r round(min(area130$ratio))` and `r round(max(area130$ratio))` boys per 100
+  girls, which no real population produces. It is flagged `LDB = 0`.
+- **1830–1839 are excluded** because HMD does not use them (`LDB = 0`).
+
+**Next steps:** divide births by population to get the crude birth rate, add
+the total fertility rate from the Human Fertility Database, and compare with
+neighbouring countries.
+
+# Reproducibility
+
+This report was written in R [@r_core] with ggplot2 [@ggplot2]. To rebuild it,
+run `source("render.R")` from the project root.
+
+<details>
+<summary>Session info</summary>
+
+```{r session-info, echo = FALSE}
+sessionInfo()
+```
+
+</details>
+
+# References
+
+Data obtained through the Human Mortality Database (www.mortality.org) in 2026.
+The input data remain under the original provider's licence.
+
+<div id="refs"></div>

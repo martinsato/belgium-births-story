@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this analysis, please cite it as below, and cite the Human Mortality Database for the data."
+title: "Belgium's Births, 1840-2024: A Data Story"
+authors:
+  - family-names: Ogenche
+    given-names: Beverley
+date-released: 2026-11-13
+license: MIT
+references:
+  - type: database
+    title: "Human Mortality Database"
+    authors:
+      - name: "Max Planck Institute for Demographic Research (Germany)"
+      - name: "University of California, Berkeley (USA)"
+      - name: "French Institute for Demographic Studies (France)"
+    url: "https://www.mortality.org"

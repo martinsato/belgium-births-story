@@ -1,0 +1,17 @@
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj.user
+
+# knitr / rmarkdown intermediates
+analysis/*_files/
+analysis/*_cache/
+analysis/*.html
+*.knit.md
+*.utf8.md
+
+# OS
+.DS_Store
+Thumbs.db
